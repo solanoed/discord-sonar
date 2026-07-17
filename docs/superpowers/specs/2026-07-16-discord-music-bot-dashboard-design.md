@@ -171,6 +171,93 @@ Detalles:
 - Socket.io: el JWT se pasa en `handshake.auth.token`, verificado en middleware de conexión antes de permitir join a la room `guild:<id>`.
 - Sin librerías de auth de terceros (no Passport) — el exchange OAuth2 de Discord es un fetch simple, menos dependencias.
 
+## Fase 3a — Auth (detalle confirmado)
+
+Fase 3 se divide en dos sub-fases independientes: **3a (este addendum)** cubre login OAuth2 + JWT + middleware + listado de guilds admin. **3b** (después, con confirmación aparte) cubre `queueService` real (join de voz, play/skip/pause/volumen) + rutas REST de queue — se testea aparte porque no depende de que el auth funcione.
+
+**Env vars nuevas:** `DISCORD_CLIENT_SECRET` (string, requerida), `JWT_SECRET` (string, requerida), `FRONTEND_URL` (default `http://localhost:5173`), `BACKEND_BASE_URL` (default `http://localhost:3001` — debe registrarse `BACKEND_BASE_URL + /api/auth/callback` como redirect URI en el Discord Developer Portal).
+
+**Archivos:**
+
+```
+backend/src/auth/
+  discordOAuth.ts   → buildAuthorizeUrl(state), exchangeCodeForToken(code), refreshAccessToken(refreshToken), fetchDiscordUser(accessToken), fetchUserGuilds(accessToken) — wrappers sobre fetch nativo de Node (sin librería HTTP nueva)
+  jwt.ts            → signSessionToken(payload), verifySessionToken(token, opts?) — wrap de jsonwebtoken
+  tokenStore.ts     → Map en memoria: saveTokens(userId, {accessToken, refreshToken, expiresAt}), getTokens(userId) — tokens de Discord nunca salen del server
+backend/src/services/
+  guildService.ts   → getMutualAdminGuilds(userGuilds, botGuildIds), hasManageGuildPermission(permissionsBitfield) — funciones puras
+backend/src/http/
+  middleware/requireAuth.ts → lee JWT de cookie "session", verifica, setea req.user = {userId, adminGuildIds}
+  routes/authRoutes.ts      → GET /api/auth/login, GET /api/auth/callback, POST /api/auth/refresh, POST /api/auth/logout, GET /api/auth/me
+  createApp.ts (modificado) → monta cookie-parser + authRoutes
+backend/src/index.ts (modificado) → pasa el discord.js Client existente a createApp/authRoutes (guildService necesita client.guilds.cache para saber en qué guilds está el bot)
+```
+
+Nuevas deps: `jsonwebtoken`, `cookie-parser` (+ `@types/jsonwebtoken`, `@types/cookie-parser`).
+
+Nota de naming: `requireAuth` (esta fase) solo autentica — verifica JWT y setea `req.user`. El `requireGuildAdmin(guildId)` mencionado en la sección "Auth flow" de arriba es autorización por guild y se construye en Fase 3b sobre `req.user.adminGuildIds` (ahí sí aplica, porque recién en 3b existen rutas guild-scoped que mutan la queue).
+
+**Protección CSRF (decisión de seguridad agregada en esta fase, no estaba explícita antes):** el flujo OAuth2 necesita un parámetro `state` — sin eso, cualquiera puede forzar un login ajeno redirigiendo a la víctima a un `/callback` con un `code` propio. `/login` genera `state` random y lo guarda en cookie httpOnly `oauth_state` de vida corta (5 min); `/callback` verifica que el `state` del query coincida antes de continuar.
+
+**Flow completo:**
+
+```
+GET /api/auth/login
+  → genera state random (crypto.randomBytes)
+  → seta cookie httpOnly "oauth_state" (5 min, sameSite=lax)
+  → redirect a Discord authorize URL (scope=identify+guilds, state=state, redirect_uri=BACKEND_BASE_URL/api/auth/callback)
+
+GET /api/auth/callback?code=...&state=...
+  → compara state del query vs cookie "oauth_state" → si no coincide o falta: 400, borra cookie, no continúa
+  → exchangeCodeForToken(code) → { access_token, refresh_token, expires_in }
+  → fetchDiscordUser(access_token) → { id, username, ... }
+  → fetchUserGuilds(access_token) → DiscordUserGuild[]
+  → botGuildIds = client.guilds.cache.map(g => g.id)
+  → adminGuildIds = guildService.getMutualAdminGuilds(userGuilds, botGuildIds)
+  → tokenStore.saveTokens(userId, { accessToken, refreshToken, expiresAt })
+  → JWT = signSessionToken({ userId, adminGuildIds }), expira 1h
+  → seta cookie httpOnly "session" (sameSite=lax, secure en producción)
+  → borra cookie "oauth_state"
+  → redirect a FRONTEND_URL
+
+POST /api/auth/refresh (requiere cookie "session", aunque esté vencida)
+  → verifySessionToken(token, { ignoreExpiration: true }) → { userId, adminGuildIds }
+  → tokenStore.getTokens(userId) → si no existe: 401 (nunca logueó o el server reinició — memoria in-process, se pierde al reiniciar)
+  → refreshAccessToken(storedRefreshToken) → nuevos tokens Discord
+  → tokenStore.saveTokens(userId, nuevos tokens)
+  → nueva JWT con mismos adminGuildIds, nueva cookie "session"
+
+POST /api/auth/logout
+  → borra cookie "session", tokenStore no se toca (Discord no expone un revoke simple acá, no es crítico)
+
+GET /api/auth/me (requireAuth)
+  → devuelve { userId, adminGuildIds } del req.user
+```
+
+**Cookie `session`:** httpOnly, `sameSite=lax` (necesario — `strict` rompe el redirect cross-site desde Discord), `secure` solo si `NODE_ENV=production`.
+
+**Límite conocido de `tokenStore` en memoria:** se pierde en cada restart del backend (free-tier duerme tras inactividad) y no funciona con más de una instancia corriendo. Aceptable para v1 — el usuario simplemente re-loguea. Documentado como limitación conocida, no un bug.
+
+**Error handling (Fase 3a):**
+
+| Fuente | Manejo |
+|---|---|
+| `state` no coincide o falta en `/callback` | 400, cookie `oauth_state` borrada, no se intenta exchange |
+| `exchangeCodeForToken` falla (code inválido/expirado) | 400 con mensaje genérico, redirect a `FRONTEND_URL/login?error=oauth_failed` |
+| Usuario sin guilds en común con el bot | Login igual exitoso, `adminGuildIds: []` — no es error |
+| `/refresh` sin sesión guardada en `tokenStore` (server reinició) | 401, frontend debe forzar re-login completo |
+| `requireAuth` sin cookie o JWT inválido/vencido | 401 `{ message: 'unauthorized' }` |
+| Discord API caída durante exchange/fetch guilds | 502, mensaje genérico, no se crea sesión |
+
+**Testing (Fase 3a):**
+
+- `guildService`: funciones puras, tests con arrays fake de `DiscordUserGuild` — casos: bot no está en el guild, usuario sin `MANAGE_GUILD`, usuario owner, usuario admin real.
+- `jwt.ts`: sign/verify roundtrip real (no mock) — sign, verify devuelve mismo payload; verify con secret incorrecto o token vencido tira error; `ignoreExpiration` funciona.
+- `tokenStore.ts`: save/get roundtrip, get de userId inexistente devuelve `undefined`.
+- `discordOAuth.ts`: `fetch` global mockeado (`vi.spyOn(global, 'fetch')`) — no pega a la API real de Discord en tests. Verifica URL/headers/body correctos y parseo de la respuesta.
+- `requireAuth` middleware: test de integración con supertest contra una app Express real montando una ruta protegida fake — con cookie válida pasa, sin cookie/inválida 401.
+- `authRoutes`: integración con supertest — `/login` redirige con cookie `oauth_state` seteada; `/callback` con state mockeado completo (fetch mockeado) setea cookie `session` y redirige a `FRONTEND_URL`; `/me` protegido funciona.
+
 ## Error handling
 
 | Fuente | Manejo |
@@ -196,7 +283,8 @@ Implementación incremental — cada fase se dispara explícitamente por el usua
 |---|---|
 | 1 | Backend init: estructura, package.json, `index.ts` (Client + Player + Express básico), variables de entorno |
 | 2 | Socket.io: server setup, rooms por guild, `playerEventBridge`, eventos base (detalle: ver sección "Fase 2 — WebSockets") |
-| 3 | REST API + Auth: OAuth2 flow, JWT, middleware, rutas de guilds/queue |
+| 3a | Auth: OAuth2 flow, JWT, middleware, listado de guilds admin (detalle: ver sección "Fase 3a — Auth") |
+| 3b | `queueService` real (join voz, play/skip/pause/volumen) + rutas REST de queue |
 | 4 | Slash commands: `/play`, `/skip`, `/pause`, `/queue`, `/volume`, etc. usando `queueService` |
 | 5 | Frontend dashboard: Vite+React, login, lista de guilds, UI de queue/player en tiempo real |
 | 6 | Deploy free-tier: Render/Railway (backend+bot), Vercel/Netlify (frontend), consideraciones de sleep/wake-up en free tier |
