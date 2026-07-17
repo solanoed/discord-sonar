@@ -376,7 +376,7 @@ export const stopCommand: Command = { data, execute };
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `pnpm --filter backend test -- skip.test.ts pause.test.ts resume.test.ts stop.test.ts`
-Expected: PASS, 8 tests (2 each).
+Expected: PASS, 12 tests (3 each: command name, success reply, nothing-playing reply).
 
 - [ ] **Step 5: Commit**
 
@@ -1152,7 +1152,7 @@ This script has no automated test — it makes a real call to Discord's REST API
 - [ ] **Step 7: Run the full test suite to confirm nothing broke**
 
 Run: `pnpm --filter backend test`
-Expected: PASS, all 123 tests: 94 carried over from Phases 1-3b + 7 from Task 1 (`play`) + 8 from Task 2 (`skip`/`pause`/`resume`/`stop`) + 5 from Task 3 (`volume`/`remove`) + 4 from Task 4 (`queue`/`shuffle`) + 4 from Task 5 (`commands/index`/`interactionCreate`) + 1 new `TEST_GUILD_ID` test in this task (env.test.ts goes from 8 to 9).
+Expected: PASS, all 127 tests: 94 carried over from Phases 1-3b + 7 from Task 1 (`play`) + 12 from Task 2 (`skip`/`pause`/`resume`/`stop`) + 5 from Task 3 (`volume`/`remove`) + 4 from Task 4 (`queue`/`shuffle`) + 4 from Task 5 (`commands/index`/`interactionCreate`) + 1 new `TEST_GUILD_ID` test in this task (env.test.ts goes from 8 to 9).
 
 - [ ] **Step 8: Commit**
 
@@ -1240,7 +1240,7 @@ main().catch((error) => {
 - [ ] **Step 2: Run the full test suite to confirm nothing broke**
 
 Run: `pnpm --filter backend test`
-Expected: PASS, same 123 tests (this step only touches `index.ts`, which has no automated tests).
+Expected: PASS, same 127 tests (this step only touches `index.ts`, which has no automated tests).
 
 - [ ] **Step 3: Manual verification**
 
