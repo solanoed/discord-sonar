@@ -22,4 +22,15 @@ describe('createApp', () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ status: 'ok' });
   });
+
+  it('sets CORS headers for the configured frontend origin', async () => {
+    const client = createDiscordClient();
+    const player = await createPlayer(client);
+    const app = createApp(testAuthConfig, client, player);
+
+    const response = await request(app).get('/health').set('Origin', testAuthConfig.frontendUrl);
+
+    expect(response.headers['access-control-allow-origin']).toBe(testAuthConfig.frontendUrl);
+    expect(response.headers['access-control-allow-credentials']).toBe('true');
+  });
 });
