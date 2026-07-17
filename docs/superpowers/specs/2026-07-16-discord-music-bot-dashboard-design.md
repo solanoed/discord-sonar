@@ -258,6 +258,70 @@ GET /api/auth/me (requireAuth)
 - `requireAuth` middleware: test de integración con supertest contra una app Express real montando una ruta protegida fake — con cookie válida pasa, sin cookie/inválida 401.
 - `authRoutes`: integración con supertest — `/login` redirige con cookie `oauth_state` seteada; `/callback` con state mockeado completo (fetch mockeado) setea cookie `session` y redirige a `FRONTEND_URL`; `/me` protegido funciona.
 
+## Fase 3b — QueueService (detalle confirmado)
+
+Fase 3b implementa el control real de reproducción: join de voz, play/skip/pause/resume/volumen/remove/shuffle/stop, expuesto por REST y gateado por `requireAuth` + un nuevo middleware `requireGuildAdmin`.
+
+**Hallazgo de API importante:** discord-player v7.2.0 (instalado en Fase 1) tiene un método de conveniencia `player.play(channel, query, options)` que existe en el JS compilado (`backend/node_modules/discord-player/dist/index.js`) pero **no está declarado en los tipos** (`dist/index.d.ts`) — un typings gap real de esta versión, confirmado leyendo ambos archivos. Para evitar `as any`, `queueService` replica manualmente la secuencia que ese método hace internamente, usando solo API documentada: `player.search(query, options)` → `player.nodes.create(guild, nodeOptions)` → `queue.connect(channel)` (si `!queue.channel`) → `queue.addTrack(track)` → `queue.node.play()` (si `!queue.node.isPlaying()`).
+
+**Archivos:**
+
+```
+backend/src/services/queueService.ts
+  addTrack(client, player, guildId, userId, query) → Promise<QueueSnapshotTrack>
+    1. guild.members.fetch(userId) → member.voice.channelId
+       → si no está en voz: lanza error tipado (manejado como 400 en la ruta)
+    2. player.search(query, { requestedBy: userId })
+       → si result.isEmpty(): lanza error tipado (404)
+    3. player.nodes.create(guild) → queue
+    4. si !queue.channel: await queue.connect(channel) (403 si falla por permisos)
+    5. queue.addTrack(result.playlist ?? result.tracks[0])
+    6. si !queue.node.isPlaying(): await queue.node.play()
+    7. devuelve el track agregado normalizado
+  skip(player, guildId) → boolean          (queue.node.skip())
+  pause(player, guildId) → boolean         (queue.node.pause())
+  resume(player, guildId) → boolean        (queue.node.resume())
+  setVolume(player, guildId, volume) → boolean  (valida 0-100, queue.node.setVolume(volume))
+  remove(player, guildId, trackId) → boolean    (queue.removeTrack(trackId))
+  shuffle(player, guildId) → boolean       (queue.tracks.shuffle())
+  stop(player, guildId) → boolean          (queue.delete())
+  Todas (excepto addTrack) devuelven false si player.nodes.get(guildId) es null (sin cola activa) — la ruta lo traduce a 404.
+
+backend/src/http/middleware/requireGuildAdmin.ts
+  createRequireGuildAdmin(): RequestHandler → corre después de requireAuth; lee req.params.guildId, chequea que esté en req.user.adminGuildIds (401 si no hay req.user, 403 si no es admin de ese guild)
+
+backend/src/http/routes/queueRoutes.ts (montado en /api/guilds/:guildId/queue, requireAuth + requireGuildAdmin)
+  GET    /                → buildQueueSnapshot(player.nodes.get(guildId))
+  POST   /                → addTrack (body: { query: string })
+  POST   /skip
+  POST   /pause
+  POST   /resume
+  PUT    /volume           → body: { volume: number }
+  DELETE /track/:trackId
+  POST   /shuffle
+  POST   /stop
+
+backend/src/http/routes/guildsRoutes.ts (montado en /api/guilds, requireAuth)
+  GET / → req.user.adminGuildIds enriquecido con { id, name } desde client.guilds.cache
+```
+
+**Error handling (Fase 3b):**
+
+| Fuente | Manejo |
+|---|---|
+| Usuario no está en ningún canal de voz al pedir play | 400 `{ message: 'you must be in a voice channel' }` |
+| Búsqueda sin resultados | 404 `{ message: 'no results found for query' }` |
+| Bot sin permiso Connect/Speak en el canal | 403 `{ message: 'missing voice permissions' }` |
+| Acción sobre guild sin cola activa (skip/pause/resume/volume/remove/shuffle/stop) | 404 `{ message: 'no active queue for this guild' }` |
+| `volume` fuera de rango 0-100 | 400 validación |
+| `guildId` no está en `req.user.adminGuildIds` | 403 (`requireGuildAdmin`) |
+
+**Testing (Fase 3b):**
+
+- `queueService`: usa `Client`/`Player` reales (sin login, mismo patrón que Fases 1-2), pero mockea con `vi.spyOn` los métodos que tocarían red/voz real (`player.search`, `queue.connect`, `queue.node.play`) — verifica orden de llamadas y argumentos, nunca red real.
+- `requireGuildAdmin`: unit test con `req.user` fake — admin pasa, no-admin 403, sin `req.user` 401.
+- `queueRoutes` / `guildsRoutes`: integración con supertest, `queueService` mockeado vía namespace import (mismo patrón que `authRoutes` en Fase 3a) — no dependen de discord-player real ni de Discord.
+
 ## Error handling
 
 | Fuente | Manejo |
@@ -284,7 +348,7 @@ Implementación incremental — cada fase se dispara explícitamente por el usua
 | 1 | Backend init: estructura, package.json, `index.ts` (Client + Player + Express básico), variables de entorno |
 | 2 | Socket.io: server setup, rooms por guild, `playerEventBridge`, eventos base (detalle: ver sección "Fase 2 — WebSockets") |
 | 3a | Auth: OAuth2 flow, JWT, middleware, listado de guilds admin (detalle: ver sección "Fase 3a — Auth") |
-| 3b | `queueService` real (join voz, play/skip/pause/volumen) + rutas REST de queue |
+| 3b | `queueService` real (join voz, play/skip/pause/volumen) + rutas REST de queue (detalle: ver sección "Fase 3b — QueueService") |
 | 4 | Slash commands: `/play`, `/skip`, `/pause`, `/queue`, `/volume`, etc. usando `queueService` |
 | 5 | Frontend dashboard: Vite+React, login, lista de guilds, UI de queue/player en tiempo real |
 | 6 | Deploy free-tier: Render/Railway (backend+bot), Vercel/Netlify (frontend), consideraciones de sleep/wake-up en free tier |
