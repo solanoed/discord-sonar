@@ -13,6 +13,13 @@ export function registerInteractionHandler(
     const command = commands.get(interaction.commandName);
     if (!command) return;
 
-    await command.execute(interaction, deps);
+    try {
+      await command.execute(interaction, deps);
+    } catch (error) {
+      console.error(`Unhandled error in /${interaction.commandName}`, error);
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply('Something went wrong running that command.');
+      }
+    }
   });
 }

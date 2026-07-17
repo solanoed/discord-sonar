@@ -70,4 +70,28 @@ describe('registerInteractionHandler', () => {
 
     expect(execute).not.toHaveBeenCalled();
   });
+
+  it('catches an error thrown by a command and edits the reply instead of leaving it unhandled', async () => {
+    const { client, handlers } = buildFakeClient();
+    const execute = vi.fn(async () => {
+      throw new Error('boom');
+    });
+    const commands = new Collection<string, Command>();
+    commands.set('skip', { data: { name: 'skip', toJSON: () => ({}) }, execute });
+
+    registerInteractionHandler(client, commands, deps);
+
+    const editReply = vi.fn(async () => undefined);
+    const interaction = {
+      isChatInputCommand: () => true,
+      commandName: 'skip',
+      deferred: true,
+      replied: false,
+      editReply,
+    } as unknown as ChatInputCommandInteraction;
+
+    await expect(handlers.interactionCreate(interaction)).resolves.toBeUndefined();
+
+    expect(editReply).toHaveBeenCalledWith(expect.stringContaining('wrong'));
+  });
 });
