@@ -7,6 +7,7 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(1),
   FRONTEND_URL: z.string().url().default('http://localhost:5173'),
   BACKEND_BASE_URL: z.string().url().default('http://localhost:3001'),
+  TEST_GUILD_ID: z.string().min(1).optional(),
   PORT: z.coerce.number().int().positive().default(3001),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
 });

@@ -87,4 +87,23 @@ describe('loadEnv', () => {
     expect(env.FRONTEND_URL).toBe('https://dashboard.example.com');
     expect(env.BACKEND_BASE_URL).toBe('https://api.example.com');
   });
+
+  it('leaves TEST_GUILD_ID undefined when absent, and passes it through when present', () => {
+    const withoutIt = loadEnv({
+      DISCORD_TOKEN: 'token',
+      DISCORD_CLIENT_ID: 'abc',
+      DISCORD_CLIENT_SECRET: 'clientsecret',
+      JWT_SECRET: 'secret',
+    });
+    expect(withoutIt.TEST_GUILD_ID).toBeUndefined();
+
+    const withIt = loadEnv({
+      DISCORD_TOKEN: 'token',
+      DISCORD_CLIENT_ID: 'abc',
+      DISCORD_CLIENT_SECRET: 'clientsecret',
+      JWT_SECRET: 'secret',
+      TEST_GUILD_ID: 'guild-123',
+    });
+    expect(withIt.TEST_GUILD_ID).toBe('guild-123');
+  });
 });
