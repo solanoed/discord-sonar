@@ -16,17 +16,21 @@ async function main(): Promise<void> {
     console.log(`Logged in as ${readyClient.user.tag}`);
   });
 
-  const app = createApp({
-    oauth: {
-      clientId: env.DISCORD_CLIENT_ID,
-      clientSecret: env.DISCORD_CLIENT_SECRET,
-      redirectUri: `${env.BACKEND_BASE_URL}/api/auth/callback`,
+  const app = createApp(
+    {
+      oauth: {
+        clientId: env.DISCORD_CLIENT_ID,
+        clientSecret: env.DISCORD_CLIENT_SECRET,
+        redirectUri: `${env.BACKEND_BASE_URL}/api/auth/callback`,
+      },
+      jwtSecret: env.JWT_SECRET,
+      frontendUrl: env.FRONTEND_URL,
+      isProduction: env.NODE_ENV === 'production',
+      getBotGuildIds: () => client.guilds.cache.map((guild) => guild.id),
     },
-    jwtSecret: env.JWT_SECRET,
-    frontendUrl: env.FRONTEND_URL,
-    isProduction: env.NODE_ENV === 'production',
-    getBotGuildIds: () => client.guilds.cache.map((guild) => guild.id),
-  });
+    client,
+    player,
+  );
   const httpServer = createHttpServer(app);
   const io = createSocketServer(httpServer, player);
   registerPlayerEventBridge(player, io);
