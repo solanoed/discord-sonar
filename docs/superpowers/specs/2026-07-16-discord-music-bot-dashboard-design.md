@@ -88,7 +88,7 @@ Dashboard POST ──┘                                                    │
 
 Reglas:
 
-- `queueService` expone funciones puras: `addTrack`, `skip`, `pause`, `resume`, `setVolume`, `remove`, `shuffle`. Comandos slash y controllers REST llaman estas mismas funciones — cero lógica duplicada.
+- `queueService` expone funciones puras: `addTrack`, `skip`, `pause`, `resume`, `setVolume`, `remove`, `shuffle`, `stop`. Comandos slash y controllers REST llaman estas mismas funciones — cero lógica duplicada.
 - `playerEventBridge` es un único listener global (no uno por request) — evita fugas de listeners y doble-emit.
 - El snapshot enviado al dashboard normaliza el estado (track actual, progreso, cola completa, volumen, playing/paused/idle) — no expone objetos internos de discord-player.
 - Rooms de socket.io por `guild:<id>` — el dashboard solo recibe updates del guild que tiene abierto.
@@ -324,6 +324,57 @@ backend/src/http/routes/guildsRoutes.ts (montado en /api/guilds, requireAuth)
 - `requireGuildAdmin`: unit test con `req.user` fake — admin pasa, no-admin 403, sin `req.user` 401.
 - `queueRoutes` / `guildsRoutes`: integración con supertest, `queueService` mockeado vía namespace import (mismo patrón que `authRoutes` en Fase 3a) — no dependen de discord-player real ni de Discord.
 
+## Fase 4 — Slash Commands (detalle confirmado)
+
+Segunda superficie de control además del dashboard REST (Fase 3b), reusando exactamente las mismas funciones de `queueService` — sin lógica duplicada, matching el principio "single source of truth" del diseño original. Sin `requireGuildAdmin`: abierto a cualquiera en el server (Discord ya filtra visibilidad de comandos por permisos de canal/rol si el admin del server lo configura así).
+
+**Env var nueva:** `TEST_GUILD_ID` (solo para el script de deploy de comandos, no para el server principal).
+
+**Archivos:**
+
+```
+backend/src/commands/
+  types.ts        → Command = { data: SlashCommandBuilder; execute: (interaction, deps) => Promise<void> }
+                     CommandDeps = { client: Client; player: Player }
+  play.ts         → /play query:string        → queueService.addTrack
+  skip.ts         → /skip                     → queueService.skip
+  pause.ts        → /pause                    → queueService.pause
+  resume.ts       → /resume                   → queueService.resume
+  volume.ts       → /volume amount:integer    → queueService.setVolume
+  queue.ts        → /queue                    → buildQueueSnapshot(player.nodes.get(guildId)), formateado como texto
+  remove.ts       → /remove position:integer  → resuelve position (1-indexed) a trackId vía snapshot, luego queueService.remove
+  shuffle.ts      → /shuffle                  → queueService.shuffle
+  stop.ts         → /stop                     → queueService.stop
+  index.ts        → Collection<string, Command> con los 9 comandos
+
+backend/src/events/interactionCreate.ts
+  registerInteractionHandler(client, commands, deps) → client.on('interactionCreate', ...), despacha por interaction.commandName, ignora interacciones no chat-input y comandos desconocidos sin crashear
+
+backend/src/deployCommands.ts
+  script standalone (no arranca el bot) → PUT de los 9 comandos al guild TEST_GUILD_ID vía discord.js REST
+  nuevo script en package.json: "deploy-commands": "tsx src/deployCommands.ts"
+```
+
+**Deferred replies:** `addTrack` puede tardar (search + connect) más de los 3s que Discord da para responder una interacción — todo comando hace `await interaction.deferReply()` primero, `await interaction.editReply(...)` después con el resultado o el error. Respuestas públicas (no efímeras), como la mayoría de bots de música.
+
+**Error handling (Fase 4):**
+
+| Fuente | Reply |
+|---|---|
+| `NotInVoiceChannelError` (de `addTrack`) | "Tenés que estar en un canal de voz" |
+| `NoSearchResultsError` | "No encontré resultados para esa búsqueda" |
+| `VoiceConnectionError` | "No tengo permisos para conectarme a ese canal" |
+| `InvalidVolumeError` | "El volumen debe estar entre 0 y 100" |
+| skip/pause/resume/remove/shuffle/stop devuelve `false` (sin cola activa) | "No hay nada sonando en este server" |
+| `/queue` sin cola activa | No es error — muestra estado idle |
+| `/remove` con `position` fuera de rango | "Posición inválida" (chequeo antes de llamar a `queueService.remove`) |
+
+**Testing (Fase 4):**
+
+- Cada comando: interaction fake (`deferReply`/`editReply`/`options.getString`/`getInteger` como `vi.fn()`, `guildId`/`user.id` fijos) — mismo patrón de fakes que `queueService`/`queueRoutes`. `queueService` mockeado vía namespace import. Caso éxito + caso error/sin-cola por comando.
+- `interactionCreate`: interaction fake con `isChatInputCommand()` true/false, `commandName` conocido/desconocido — despacha al comando correcto, ignora comandos desconocidos e interacciones no-slash sin crashear.
+- `deployCommands.ts`: script standalone, sin test automatizado (pega a la API real de Discord) — mismo criterio que `index.ts` en fases anteriores, verificación manual pendiente (necesita bot token real + `TEST_GUILD_ID`).
+
 ## Error handling
 
 | Fuente | Manejo |
@@ -351,7 +402,7 @@ Implementación incremental — cada fase se dispara explícitamente por el usua
 | 2 | Socket.io: server setup, rooms por guild, `playerEventBridge`, eventos base (detalle: ver sección "Fase 2 — WebSockets") |
 | 3a | Auth: OAuth2 flow, JWT, middleware, listado de guilds admin (detalle: ver sección "Fase 3a — Auth") |
 | 3b | `queueService` real (join voz, play/skip/pause/volumen) + rutas REST de queue (detalle: ver sección "Fase 3b — QueueService") |
-| 4 | Slash commands: `/play`, `/skip`, `/pause`, `/queue`, `/volume`, etc. usando `queueService` |
+| 4 | Slash commands: `/play`, `/skip`, `/pause`, `/resume`, `/queue`, `/volume`, `/remove`, `/shuffle`, `/stop` usando `queueService` (detalle: ver sección "Fase 4 — Slash Commands") |
 | 5 | Frontend dashboard: Vite+React, login, lista de guilds, UI de queue/player en tiempo real |
 | 6 | Deploy free-tier: Render/Railway (backend+bot), Vercel/Netlify (frontend), consideraciones de sleep/wake-up en free tier |
 
