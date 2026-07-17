@@ -20,7 +20,7 @@ async function execute(interaction: ChatInputCommandInteraction, deps: CommandDe
     return;
   }
 
-  const snapshot = snapshotModule.buildQueueSnapshot(deps.player.nodes?.get(guildId) ?? null);
+  const snapshot = snapshotModule.buildQueueSnapshot(deps.player.nodes.get(guildId));
   const track = snapshot.queue[position - 1];
 
   if (!track) {

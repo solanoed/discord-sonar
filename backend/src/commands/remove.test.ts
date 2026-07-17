@@ -14,7 +14,7 @@ function fakeInteraction(position: number, guildId: string | null = 'guild-1') {
   } as unknown as ChatInputCommandInteraction;
 }
 
-const deps = { client: {} as Client, player: {} as Player };
+const deps = { client: {} as Client, player: { nodes: { get: vi.fn(() => null) } } as unknown as Player };
 
 afterEach(() => {
   vi.restoreAllMocks();
