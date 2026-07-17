@@ -64,3 +64,57 @@ export async function addTrack(
     await queue.node.play();
   }
 }
+
+export class InvalidVolumeError extends Error {
+  constructor() {
+    super('volume must be between 0 and 100');
+  }
+}
+
+export function skip(player: Player, guildId: string): boolean {
+  const queue = player.nodes.get(guildId);
+  if (!queue) return false;
+  return queue.node.skip();
+}
+
+export function pause(player: Player, guildId: string): boolean {
+  const queue = player.nodes.get(guildId);
+  if (!queue) return false;
+  return queue.node.pause();
+}
+
+export function resume(player: Player, guildId: string): boolean {
+  const queue = player.nodes.get(guildId);
+  if (!queue) return false;
+  return queue.node.resume();
+}
+
+export function setVolume(player: Player, guildId: string, volume: number): boolean {
+  if (volume < 0 || volume > 100) {
+    throw new InvalidVolumeError();
+  }
+
+  const queue = player.nodes.get(guildId);
+  if (!queue) return false;
+  return queue.node.setVolume(volume);
+}
+
+export function remove(player: Player, guildId: string, trackId: string): boolean {
+  const queue = player.nodes.get(guildId);
+  if (!queue) return false;
+  return queue.removeTrack(trackId) !== null;
+}
+
+export function shuffle(player: Player, guildId: string): boolean {
+  const queue = player.nodes.get(guildId);
+  if (!queue) return false;
+  queue.tracks.shuffle();
+  return true;
+}
+
+export function stop(player: Player, guildId: string): boolean {
+  const queue = player.nodes.get(guildId);
+  if (!queue) return false;
+  queue.delete();
+  return true;
+}
