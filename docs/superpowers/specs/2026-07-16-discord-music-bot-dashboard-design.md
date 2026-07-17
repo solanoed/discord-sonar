@@ -375,6 +375,60 @@ backend/src/deployCommands.ts
 - `interactionCreate`: interaction fake con `isChatInputCommand()` true/false, `commandName` conocido/desconocido — despacha al comando correcto, ignora comandos desconocidos e interacciones no-slash sin crashear.
 - `deployCommands.ts`: script standalone, sin test automatizado (pega a la API real de Discord) — mismo criterio que `index.ts` en fases anteriores, verificación manual pendiente (necesita bot token real + `TEST_GUILD_ID`).
 
+## Fase 5a — Frontend Scaffolding + Auth (detalle confirmado)
+
+Fase 5 se divide en tres sub-fases independientes: **5a (este addendum)** cubre scaffolding de Vite+React, login, y listado de guilds. **5b** (después) cubre sincronización en tiempo real vía socket.io-client. **5c** (después) cubre los controles de reproducción (play/skip/pause/volumen/etc) conectados a REST.
+
+**Fix de backend pendiente de Fase 3a:** el review final de Fase 3a había encontrado que no había CORS configurado — necesario ahora porque el frontend corre en un origin distinto (`VITE_BACKEND_URL` apuntando a `BACKEND_BASE_URL`). Se agrega acá:
+
+```
+backend/src/http/createApp.ts (modificado) → agrega cors({ origin: env.FRONTEND_URL, credentials: true }) antes de las rutas
+```
+
+Nueva dep backend: `cors`, `@types/cors`.
+
+**Archivos frontend (workspace nuevo, ya reservado en `pnpm-workspace.yaml` desde Fase 1):**
+
+```
+frontend/
+  index.html
+  vite.config.ts
+  vitest.config.ts          → environment: 'jsdom'
+  tsconfig.json
+  .env.example              → VITE_BACKEND_URL=http://localhost:3001
+  src/
+    main.tsx                → ReactDOM.render, envuelve App en BrowserRouter + AuthProvider
+    App.tsx                 → definición de rutas (react-router-dom)
+    context/AuthContext.tsx → AuthProvider + useAuth() hook: { user, adminGuildIds, loading, logout() }
+    services/apiClient.ts   → fetchMe(), logout(), fetchGuilds() — fetch con credentials: 'include'
+    components/RequireAuth.tsx → wrapper de ruta protegida, redirige a /login si no hay sesión
+    pages/LoginPage.tsx        → botón "Login with Discord" (window.location.href a BACKEND_URL/api/auth/login), muestra ?error= si vuelve con falla
+    pages/GuildListPage.tsx    → lista guilds vía GET /api/guilds, link a cada uno
+    pages/GuildDetailPage.tsx  → placeholder (Fase 5b rellena el contenido real)
+    types/index.ts             → tipos compartidos (GuildInfo, SessionUser)
+```
+
+**Rutas:** `/login`, `/guilds` (protegida), `/guilds/:guildId` (protegida). Sin librería de UI — CSS plano. `AuthContext` al montar llama `GET /api/auth/me` para saber si ya hay sesión (la cookie la puso el backend en el redirect de OAuth) — no hace falta página de "callback" separada en el frontend.
+
+**Error handling (Fase 5a):**
+
+| Fuente | Manejo |
+|---|---|
+| `GET /api/auth/me` sin sesión (401) | `AuthContext` pone `user: null`, `RequireAuth` redirige a `/login` |
+| `GET /api/guilds` falla | `GuildListPage` muestra mensaje de error |
+| Backend redirige a `/login?error=oauth_failed` | `LoginPage` lee query param, muestra mensaje de error |
+| Logout | `POST /api/auth/logout` → limpia `AuthContext` → navega a `/login` |
+
+Login en sí no tiene error handling del lado cliente — es navegación completa del browser, no un fetch.
+
+**Testing (Fase 5a):** vitest + `@testing-library/react`, `environment: 'jsdom'`.
+
+- `apiClient`: `fetch` mockeado (`vi.spyOn(global, 'fetch')`) — parseo correcto, maneja status no-ok.
+- `AuthContext`: `apiClient.fetchMe` mockeado — popula `user` en éxito, queda `null` en 401.
+- `RequireAuth`: con `user: null` redirige a `/login`; con `user` seteado renderiza children.
+- `LoginPage`: botón presente, mensaje de error visible cuando la URL trae `?error=`.
+- `GuildListPage`: lista de guilds mockeada se renderiza; estado de error visible si `fetchGuilds` falla.
+
 ## Error handling
 
 | Fuente | Manejo |
@@ -403,11 +457,13 @@ Implementación incremental — cada fase se dispara explícitamente por el usua
 | 3a | Auth: OAuth2 flow, JWT, middleware, listado de guilds admin (detalle: ver sección "Fase 3a — Auth") |
 | 3b | `queueService` real (join voz, play/skip/pause/volumen) + rutas REST de queue (detalle: ver sección "Fase 3b — QueueService") |
 | 4 | Slash commands: `/play`, `/skip`, `/pause`, `/resume`, `/queue`, `/volume`, `/remove`, `/shuffle`, `/stop` usando `queueService` (detalle: ver sección "Fase 4 — Slash Commands") |
-| 5 | Frontend dashboard: Vite+React, login, lista de guilds, UI de queue/player en tiempo real |
+| 5a | Frontend scaffolding + auth: Vite+React, login, lista de guilds (detalle: ver sección "Fase 5a — Frontend Scaffolding + Auth") |
+| 5b | Sincronización en tiempo real: socket.io-client, useGuildQueue, UI de estado en vivo |
+| 5c | Controles de reproducción: play/skip/pause/volumen/etc conectados a REST |
 | 6 | Deploy free-tier: Render/Railway (backend+bot), Vercel/Netlify (frontend), consideraciones de sleep/wake-up en free tier |
 
 ## Open questions / risks
 
 - Free-tier hosts (Render/Railway free) duermen tras inactividad — reconexión de voz tras cold-start necesita manejo explícito (a resolver en Fase 6).
 - Límites de rate-limit de Spotify/SoundCloud vía discord-player extractors no confirmados en producción — validar en Fase 1-2 con uso real.
-- Sin CORS configurado en el backend (ni en Express ni en socket.io) — hallazgo del review final de Fase 3a. `/me`, `/refresh`, `/logout` son pensados para ser llamados por el dashboard SPA (`FRONTEND_URL`, origin distinto al backend); sin `cors({ origin: FRONTEND_URL, credentials: true })` esas requests cross-origin con cookies fallarán. No es un defecto de 3a (no hay frontend real todavía), pero hay que agregarlo explícitamente al plan de Fase 5 (frontend dashboard) o antes.
+- CORS: hallazgo del review final de Fase 3a, resuelto en Fase 5a (ver esa sección) para las rutas Express (`cors({ origin: FRONTEND_URL, credentials: true })`). Pendiente todavía: socket.io también necesita su propia config de CORS — se resuelve en Fase 5b cuando el frontend realmente abra la conexión de socket desde otro origin.
