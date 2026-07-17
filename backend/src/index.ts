@@ -3,18 +3,25 @@ import { loadEnv } from './config/env';
 import { createDiscordClient } from './bot/createDiscordClient';
 import { createPlayer } from './bot/createPlayer';
 import { createApp } from './http/createApp';
+import { createHttpServer } from './http/createHttpServer';
+import { createSocketServer } from './sockets/createSocketServer';
+import { registerPlayerEventBridge } from './sockets/playerEventBridge';
 
 async function main(): Promise<void> {
   const env = loadEnv();
   const client = createDiscordClient();
-  await createPlayer(client);
+  const player = await createPlayer(client);
 
   client.once('ready', (readyClient) => {
     console.log(`Logged in as ${readyClient.user.tag}`);
   });
 
   const app = createApp();
-  app.listen(env.PORT, () => {
+  const httpServer = createHttpServer(app);
+  const io = createSocketServer(httpServer, player);
+  registerPlayerEventBridge(player, io);
+
+  httpServer.listen(env.PORT, () => {
     console.log(`HTTP server listening on port ${env.PORT}`);
   });
 
