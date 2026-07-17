@@ -6,6 +6,8 @@ import { createApp } from './http/createApp';
 import { createHttpServer } from './http/createHttpServer';
 import { createSocketServer } from './sockets/createSocketServer';
 import { registerPlayerEventBridge } from './sockets/playerEventBridge';
+import { createCommands } from './commands';
+import { registerInteractionHandler } from './events/interactionCreate';
 
 async function main(): Promise<void> {
   const env = loadEnv();
@@ -15,6 +17,9 @@ async function main(): Promise<void> {
   client.once('ready', (readyClient) => {
     console.log(`Logged in as ${readyClient.user.tag}`);
   });
+
+  const commands = createCommands();
+  registerInteractionHandler(client, commands, { client, player });
 
   const app = createApp(
     {
