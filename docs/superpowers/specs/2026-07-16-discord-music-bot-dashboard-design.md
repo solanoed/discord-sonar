@@ -270,7 +270,7 @@ Esto no invalida el código: `queueService.addTrack` igual replica manualmente l
 
 ```
 backend/src/services/queueService.ts
-  addTrack(client, player, guildId, userId, query) → Promise<QueueSnapshotTrack>
+  addTrack(client, player, guildId, userId, query) → Promise<void>
     1. guild.members.fetch(userId) → member.voice.channelId
        → si no está en voz: lanza error tipado (manejado como 400 en la ruta)
     2. player.search(query, { requestedBy: userId })
@@ -279,7 +279,7 @@ backend/src/services/queueService.ts
     4. si !queue.channel: await queue.connect(channel) (403 si falla por permisos)
     5. queue.addTrack(result.playlist ?? result.tracks[0])
     6. si !queue.node.isPlaying(): await queue.node.play()
-    7. devuelve el track agregado normalizado
+    (no devuelve el track — la ruta reconsulta buildQueueSnapshot(player.nodes.get(guildId)) después, así toda respuesta de la API es un snapshot consistente)
   skip(player, guildId) → boolean          (queue.node.skip())
   pause(player, guildId) → boolean         (queue.node.pause())
   resume(player, guildId) → boolean        (queue.node.resume())

@@ -90,7 +90,7 @@ export function resume(player: Player, guildId: string): boolean {
 }
 
 export function setVolume(player: Player, guildId: string, volume: number): boolean {
-  if (volume < 0 || volume > 100) {
+  if (!Number.isFinite(volume) || volume < 0 || volume > 100) {
     throw new InvalidVolumeError();
   }
 

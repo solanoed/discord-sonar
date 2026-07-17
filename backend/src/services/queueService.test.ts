@@ -196,6 +196,10 @@ describe('setVolume', () => {
     expect(() => setVolume(playerWithQueue(null), 'guild-1', 101)).toThrow(InvalidVolumeError);
   });
 
+  it('throws InvalidVolumeError when volume is NaN', () => {
+    expect(() => setVolume(playerWithQueue(null), 'guild-1', NaN)).toThrow(InvalidVolumeError);
+  });
+
   it('returns false when there is no active queue', () => {
     expect(setVolume(playerWithQueue(null), 'guild-1', 50)).toBe(false);
   });
