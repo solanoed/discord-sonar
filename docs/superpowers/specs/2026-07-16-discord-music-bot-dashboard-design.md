@@ -293,3 +293,4 @@ Implementación incremental — cada fase se dispara explícitamente por el usua
 
 - Free-tier hosts (Render/Railway free) duermen tras inactividad — reconexión de voz tras cold-start necesita manejo explícito (a resolver en Fase 6).
 - Límites de rate-limit de Spotify/SoundCloud vía discord-player extractors no confirmados en producción — validar en Fase 1-2 con uso real.
+- Sin CORS configurado en el backend (ni en Express ni en socket.io) — hallazgo del review final de Fase 3a. `/me`, `/refresh`, `/logout` son pensados para ser llamados por el dashboard SPA (`FRONTEND_URL`, origin distinto al backend); sin `cors({ origin: FRONTEND_URL, credentials: true })` esas requests cross-origin con cookies fallarán. No es un defecto de 3a (no hay frontend real todavía), pero hay que agregarlo explícitamente al plan de Fase 5 (frontend dashboard) o antes.
