@@ -262,7 +262,9 @@ GET /api/auth/me (requireAuth)
 
 Fase 3b implementa el control real de reproducción: join de voz, play/skip/pause/resume/volumen/remove/shuffle/stop, expuesto por REST y gateado por `requireAuth` + un nuevo middleware `requireGuildAdmin`.
 
-**Hallazgo de API importante:** discord-player v7.2.0 (instalado en Fase 1) tiene un método de conveniencia `player.play(channel, query, options)` que existe en el JS compilado (`backend/node_modules/discord-player/dist/index.js`) pero **no está declarado en los tipos** (`dist/index.d.ts`) — un typings gap real de esta versión, confirmado leyendo ambos archivos. Para evitar `as any`, `queueService` replica manualmente la secuencia que ese método hace internamente, usando solo API documentada: `player.search(query, options)` → `player.nodes.create(guild, nodeOptions)` → `queue.connect(channel)` (si `!queue.channel`) → `queue.addTrack(track)` → `queue.node.play()` (si `!queue.node.isPlaying()`).
+**Corrección post-implementación (Task 3, Fase 3b):** el análisis original de esta sección afirmaba que `player.play(channel, query, options)` existía en tiempo de ejecución pero no estaba declarado en los tipos de discord-player v7.2.0 — un "typings gap". Eso era **incorrecto**: un grep con patrón exacto `"play(channel"` falló en encontrar la declaración real porque el método usa un genérico (`play<T = unknown>(channel: ...)`), no porque falte en `dist/index.d.ts`. `Player.play()` está completamente tipado (línea ~3019 de `dist/index.d.ts`, dentro de la clase `Player`, justo antes de `search()`). El review final de Task 3 encontró y confirmó esto contra el archivo real.
+
+Esto no invalida el código: `queueService.addTrack` igual replica manualmente la secuencia (`player.search` → `player.nodes.create` → `queue.connect` si no conectado → `queue.addTrack` → `queue.node.play()` si no reproduciendo) en vez de llamar al método de conveniencia, lo cual sigue siendo válido — cada paso queda testeable/mockeable por separado sin depender de la caja negra de `player.play()`. Pero la razón correcta es esa (control granular y testabilidad), no un typings gap que nunca existió.
 
 **Archivos:**
 
