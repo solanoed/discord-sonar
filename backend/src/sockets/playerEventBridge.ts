@@ -26,4 +26,12 @@ export function registerPlayerEventBridge(player: Player, io: Server): void {
   for (const event of BRIDGED_EVENTS) {
     player.events.on(event, broadcast);
   }
+
+  player.events.on(GuildQueueEvent.PlayerError, (queue, error, track) => {
+    console.error(`[player] error playing "${track.title}" in guild ${queue.guild.id}:`, error);
+  });
+
+  player.events.on(GuildQueueEvent.Disconnect, (queue) => {
+    console.log(`[player] disconnected from voice in guild ${queue.guild.id}`);
+  });
 }

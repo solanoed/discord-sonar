@@ -44,6 +44,7 @@ export function createQueueRoutes(config: QueueRoutesConfig): Router {
       } else if (error instanceof queueService.VoiceConnectionError) {
         res.status(403).json({ message: error.message });
       } else {
+        console.error(`[queue] unexpected error adding track for guild ${req.params.guildId}:`, error);
         res.status(502).json({ message: 'failed to add track' });
       }
     }
