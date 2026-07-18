@@ -8,6 +8,7 @@ import { createSocketServer } from './sockets/createSocketServer';
 import { registerPlayerEventBridge } from './sockets/playerEventBridge';
 import { createCommands } from './commands';
 import { registerInteractionHandler } from './events/interactionCreate';
+import { startKeepAlive } from './keepAlive';
 
 async function main(): Promise<void> {
   const env = loadEnv();
@@ -43,6 +44,10 @@ async function main(): Promise<void> {
   httpServer.listen(env.PORT, () => {
     console.log(`HTTP server listening on port ${env.PORT}`);
   });
+
+  if (env.NODE_ENV === 'production') {
+    startKeepAlive(env.BACKEND_BASE_URL);
+  }
 
   await client.login(env.DISCORD_TOKEN);
 
