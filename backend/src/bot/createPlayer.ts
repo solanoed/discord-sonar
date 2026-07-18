@@ -40,6 +40,14 @@ onStreamExtracted(async (stream, track) => {
 
 export async function createPlayer(client: Client, options: CreatePlayerOptions = {}): Promise<Player> {
   const player = new Player(client, { skipFFmpeg: false, ffmpegPath: ffmpegPath ?? undefined });
+
+  // TEMP: this is the global extractor-execution debug channel (Player#debug),
+  // distinct from the per-guild queue debug already bridged in
+  // playerEventBridge.ts. It's the only place "Extractor X failed with
+  // error: ..." gets logged, which is what's currently swallowed and hiding
+  // why YoutubeiExtractor falls back to a naked CDN URL for ffmpeg.
+  player.on('debug', (message) => console.log(`[player-debug] ${message}`));
+
   await player.extractors.register(SoundCloudExtractor, {});
   await player.extractors.register(YoutubeiExtractor, {
     cookie: options.youtubeCookie,
