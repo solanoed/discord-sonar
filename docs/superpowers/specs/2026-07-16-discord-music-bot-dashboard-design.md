@@ -474,6 +474,45 @@ frontend/src/pages/GuildDetailPage.tsx (modificado)
 - `useGuildQueue`: `io()` mockeado (fake socket con `on`/`emit`/`disconnect` como `vi.fn()`) — simula `queue:state` y verifica que el estado del hook se actualiza; simula `connect_error`/`error` y verifica estado de error.
 - `GuildDetailPage`: mockea el hook, renderiza con snapshot fake, verifica que se muestra track/status/cola/volumen.
 
+## Fase 5c — Controles de reproducción (detalle confirmado)
+
+Tercera y última sub-fase del frontend: agrega los controles de reproducción al dashboard, conectados a las rutas REST de `queueRoutes` (Fase 3b). Sin refetch manual tras cada acción — el backend ya emite `queue:state` por socket después de cada mutación (Fase 3b/5b), así que cada botón solo dispara la llamada REST; `useGuildQueue` (ya suscrito) actualiza la UI solo.
+
+**Archivos:**
+
+```
+frontend/src/services/apiClient.ts (extendido)
+  addTrack(guildId, query): Promise<void>       → POST /api/guilds/:guildId/queue { query }
+  skip(guildId): Promise<void>                  → POST .../skip
+  pause(guildId): Promise<void>                 → POST .../pause
+  resume(guildId): Promise<void>                → POST .../resume
+  setVolume(guildId, volume): Promise<void>      → PUT .../volume { volume }
+  remove(guildId, trackId): Promise<void>        → DELETE .../track/:trackId
+  shuffle(guildId): Promise<void>                → POST .../shuffle
+  stop(guildId): Promise<void>                   → POST .../stop
+  todas con credentials: 'include', tiran Error con el mensaje del server en respuesta no-ok
+
+frontend/src/pages/GuildDetailPage.tsx (extendido)
+  → input + botón Play (siempre visible, deshabilitado si el input está vacío)
+  → skip, pause/resume (toggle según snapshot.status), volumen (input + botón),
+    remove por track en la lista, shuffle, stop — visibles solo cuando snapshot.currentTrack existe
+  → estado local `actionError` (separado del error de conexión del hook), se limpia antes de cada nueva acción
+```
+
+**Error handling (Fase 5c):**
+
+| Fuente | Manejo |
+|---|---|
+| Cualquier acción REST falla (400/403/404/502) | `apiClient` tira `Error` con el mensaje del server; página lo muestra en `actionError` |
+| Play con input vacío | Botón deshabilitado, no dispara fetch |
+| Volumen fuera de 0-100 | Chequeo del lado cliente antes de mandar (backend igual valida) |
+| Nueva acción disparada | Limpia `actionError` anterior antes de la llamada |
+
+**Testing (Fase 5c):**
+
+- `apiClient`: las 8 funciones nuevas, `fetch` mockeado — URL/método/body/credentials correctos, tira en respuesta no-ok.
+- `GuildDetailPage`: `apiClient` mockeado (namespace import) + `useGuildQueue` ya mockeado — cada botón dispara la función correcta con los args correctos; error se muestra si la llamada rechaza; controles ocultos si no hay `currentTrack`; toggle pause/resume muestra label correcto según `status`.
+
 ## Error handling
 
 | Fuente | Manejo |
@@ -504,7 +543,7 @@ Implementación incremental — cada fase se dispara explícitamente por el usua
 | 4 | Slash commands: `/play`, `/skip`, `/pause`, `/resume`, `/queue`, `/volume`, `/remove`, `/shuffle`, `/stop` usando `queueService` (detalle: ver sección "Fase 4 — Slash Commands") |
 | 5a | Frontend scaffolding + auth: Vite+React, login, lista de guilds (detalle: ver sección "Fase 5a — Frontend Scaffolding + Auth") |
 | 5b | Sincronización en tiempo real: socket.io-client, useGuildQueue, UI de estado en vivo, + auth en el handshake del socket (detalle: ver sección "Fase 5b — Sincronización en tiempo real") |
-| 5c | Controles de reproducción: play/skip/pause/volumen/etc conectados a REST |
+| 5c | Controles de reproducción: play/skip/pause/volumen/etc conectados a REST (detalle: ver sección "Fase 5c — Controles de reproducción") |
 | 6 | Deploy free-tier: Render/Railway (backend+bot), Vercel/Netlify (frontend), consideraciones de sleep/wake-up en free tier |
 
 ## Open questions / risks
