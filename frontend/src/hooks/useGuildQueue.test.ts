@@ -55,6 +55,31 @@ describe('useGuildQueue', () => {
     await waitFor(() => expect(result.current.error).toBe('you do not have access to this guild'));
   });
 
+  it('clears a stale error once the connection recovers and fresh state arrives', async () => {
+    const socket = fakeSocket();
+    vi.spyOn(socketClient, 'createSocketConnection').mockReturnValue(socket as never);
+
+    const { result } = renderHook(() => useGuildQueue('guild-1'));
+
+    act(() => {
+      socket._handlers.connect_error();
+    });
+    await waitFor(() => expect(result.current.error).toBe('Failed to connect to the server.'));
+
+    act(() => {
+      socket._handlers.connect();
+    });
+    expect(result.current.error).toBeNull();
+
+    const snapshot = { status: 'idle', currentTrack: null, queue: [], volume: 100, progressMs: 0 };
+    act(() => {
+      socket._handlers['queue:state'](snapshot);
+    });
+
+    await waitFor(() => expect(result.current.snapshot).toEqual(snapshot));
+    expect(result.current.error).toBeNull();
+  });
+
   it('leaves the guild and disconnects on unmount', () => {
     const socket = fakeSocket();
     vi.spyOn(socketClient, 'createSocketConnection').mockReturnValue(socket as never);

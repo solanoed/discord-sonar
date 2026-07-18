@@ -21,12 +21,14 @@ export function useGuildQueue(guildId: string): UseGuildQueueResult {
     const socket = socketClient.createSocketConnection();
 
     socket.on('connect', () => {
+      setError(null);
       socket.emit('guild:join', { guildId });
     });
 
     socket.on('queue:state', (state: QueueSnapshot) => {
       setSnapshot(state);
       setLoading(false);
+      setError(null);
     });
 
     socket.on('error', (payload: { message: string }) => {
