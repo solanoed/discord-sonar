@@ -1,3 +1,8 @@
 packages:
   - "backend"
   - "frontend"
+
+onlyBuiltDependencies:
+  - "@discordjs/opus"
+  - "ffmpeg-static"
+  - "esbuild"
