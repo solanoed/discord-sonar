@@ -51,9 +51,9 @@ export async function createPlayer(client: Client, options: CreatePlayerOptions 
   await player.extractors.register(SoundCloudExtractor, {});
   await player.extractors.register(YoutubeiExtractor, {
     cookie: options.youtubeCookie,
-    generateWithPoToken: true,
+    disablePlayer: true,
     streamOptions: {
-      useClient: 'WEB',
+      useClient: 'ANDROID',
     },
   });
   await player.extractors.register(AttachmentExtractor, {});
