@@ -24,6 +24,15 @@ export function GuildListPage() {
     return <p role="alert">{error}</p>;
   }
 
+  if (guilds.length === 0) {
+    return (
+      <p>
+        No servers to show. Make sure the bot has been invited to a server where you have the
+        &quot;Manage Server&quot; permission.
+      </p>
+    );
+  }
+
   return (
     <ul>
       {guilds.map((guild) => (
