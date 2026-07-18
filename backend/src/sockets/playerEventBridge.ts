@@ -31,7 +31,19 @@ export function registerPlayerEventBridge(player: Player, io: Server): void {
     console.error(`[player] error playing "${track.title}" in guild ${queue.guild.id}:`, error);
   });
 
+  player.events.on(GuildQueueEvent.Error, (queue, error) => {
+    console.error(`[player] queue error in guild ${queue.guild.id}:`, error);
+  });
+
+  player.events.on(GuildQueueEvent.Debug, (queue, message) => {
+    console.log(`[player] debug [guild ${queue.guild.id}]: ${message}`);
+  });
+
   player.events.on(GuildQueueEvent.Disconnect, (queue) => {
     console.log(`[player] disconnected from voice in guild ${queue.guild.id}`);
+  });
+
+  player.events.on(GuildQueueEvent.ConnectionDestroyed, (queue) => {
+    console.log(`[player] voice connection destroyed in guild ${queue.guild.id}`);
   });
 }
