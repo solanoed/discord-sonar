@@ -11,9 +11,10 @@
     "deploy-commands": "tsx src/deployCommands.ts"
   },
   "dependencies": {
-    "@discord-player/extractor": "^7.1.0",
     "@discordjs/opus": "^0.9.0",
     "@snazzah/davey": "^0.1.12",
+    "discord-player-youtubei": "^2.0.0",
+    "youtube-dl-exec": "^3.1.9",
     "cookie": "^0.7.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",

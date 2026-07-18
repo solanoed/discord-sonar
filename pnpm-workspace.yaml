@@ -6,3 +6,4 @@ onlyBuiltDependencies:
   - "@discordjs/opus"
   - "ffmpeg-static"
   - "esbuild"
+  - "youtube-dl-exec"
