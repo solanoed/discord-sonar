@@ -137,7 +137,7 @@ type QueueSnapshot = {
 - Cliente conecta y emite `guild:join` con `{ guildId: string }` → server hace `socket.join(\`guild:${guildId}\`)` y responde inmediatamente con el snapshot actual de ese guild (via `buildQueueSnapshot`, `null` → idle si el guild no tiene cola activa aún).
 - Cliente puede emitir `guild:leave` con `{ guildId: string }` → `socket.leave(...)`.
 - `guild:join` sin `guildId` válido (string no vacío) → server emite `error` al socket, no ejecuta `join()`.
-- **Nota de seguridad temporal:** sin JWT todavía, cualquiera que conozca un `guildId` puede unirse a su room y ver el snapshot. Aceptable en Fase 2 porque no hay acción de escritura ni datos sensibles en el snapshot (solo metadata de tracks públicos). Se blinda con el middleware JWT de Fase 3 (`handshake.auth.token`) sin cambiar la estructura de rooms/eventos aquí definida.
+- **Nota de seguridad temporal:** sin JWT todavía, cualquiera que conozca un `guildId` puede unirse a su room y ver el snapshot. Aceptable en Fase 2 porque no hay acción de escritura ni datos sensibles en el snapshot (solo metadata de tracks públicos). Se blinda en Fase 5b (ver esa sección) sin cambiar la estructura de rooms/eventos aquí definida — vía la cookie httpOnly `session` en el handshake, no vía `handshake.auth.token` (el JWT es httpOnly, el frontend no puede leerlo para pasarlo explícito).
 
 **Testing (Fase 2):**
 
@@ -168,7 +168,7 @@ Detalles:
 
 - JWT corto (~1h) + refresh silencioso vía `/api/auth/refresh` (el access_token de Discord se guarda server-side, nunca en la cookie del cliente).
 - Middleware `requireGuildAdmin(guildId)` valida el JWT y que `guildId` esté en `adminGuildIds` antes de cualquier ruta REST o acción de socket.
-- Socket.io: el JWT se pasa en `handshake.auth.token`, verificado en middleware de conexión antes de permitir join a la room `guild:<id>`.
+- Socket.io: la cookie httpOnly `session` viaja automática en el handshake (`withCredentials: true` + CORS `credentials: true`), verificada en middleware de conexión antes de permitir join a la room `guild:<id>` — ver detalle en "Fase 5b". No se usa `handshake.auth.token` porque el JWT es httpOnly (el frontend no puede leerlo para pasarlo explícito).
 - Sin librerías de auth de terceros (no Passport) — el exchange OAuth2 de Discord es un fetch simple, menos dependencias.
 
 ## Fase 3a — Auth (detalle confirmado)
@@ -429,6 +429,51 @@ Login en sí no tiene error handling del lado cliente — es navegación complet
 - `LoginPage`: botón presente, mensaje de error visible cuando la URL trae `?error=`.
 - `GuildListPage`: lista de guilds mockeada se renderiza; estado de error visible si `fetchGuilds` falla.
 
+## Fase 5b — Sincronización en tiempo real (detalle confirmado)
+
+Segunda sub-fase del frontend: conecta `GuildDetailPage` al socket.io del backend (Fase 2) para mostrar estado en vivo. Alcance solo lectura — sin botones de control todavía (eso es Fase 5c).
+
+**Decisión de seguridad tomada en esta fase:** el socket.io de Fase 2 no tenía auth (deliberadamente diferido en su momento — "se blinda con JWT sin cambiar la estructura de rooms/eventos"). Ahora que existe frontend real, se cierra ese gap: el handshake de conexión valida la cookie httpOnly `session` (viaja automática si el cliente usa `withCredentials: true` y el servidor tiene CORS con `credentials: true`, ya configurado en Fase 5a), y `guild:join` rechaza guilds fuera de `adminGuildIds` del usuario — mismo patrón que `requireAuth`/`requireGuildAdmin` en REST.
+
+**Archivos:**
+
+```
+backend/src/sockets/createSocketServer.ts (modificado)
+  → new Server(httpServer, { cors: { origin: frontendUrl, credentials: true } })
+  → io.use((socket, next) => { ... }) — parsea cookie 'session' de socket.request.headers.cookie,
+    verifySessionToken (mismo de auth/jwt.ts), next(new Error('unauthorized')) si falta/inválida,
+    si ok: socket.data.user = { userId, adminGuildIds }
+  → guild:join ahora también chequea guildId ∈ socket.data.user.adminGuildIds antes de join()
+  → createSocketServer(httpServer, player, jwtSecret, frontendUrl) — firma extendida con los 2 params nuevos
+
+frontend/src/services/socketClient.ts
+  → createSocketConnection(): Socket — io(BACKEND_URL, { withCredentials: true })
+
+frontend/src/hooks/useGuildQueue.ts
+  → useGuildQueue(guildId: string): { snapshot: QueueSnapshot | null; loading: boolean; error: string | null }
+    conecta al montar, emite guild:join, escucha 'queue:state' y 'error'/'connect_error',
+    limpia (guild:leave + disconnect) al desmontar o cambiar guildId
+
+frontend/src/pages/GuildDetailPage.tsx (modificado)
+  → usa useGuildQueue(guildId), muestra track actual, status, progreso, volumen, cola — solo lectura
+```
+
+**Error handling (Fase 5b):**
+
+| Fuente | Manejo |
+|---|---|
+| Handshake sin cookie `session` válida | Conexión rechazada (`next(new Error('unauthorized'))`), cliente recibe `connect_error` |
+| `guild:join` con guildId fuera de `adminGuildIds` | `error` emitido, no hace `join()` |
+| `guild:join` sin guildId válido | Igual que Fase 2 (ya existía) |
+| Socket sin snapshot todavía | Estado `loading`, no es error |
+| `connect_error` / `error` del server | Hook expone estado de error, `GuildDetailPage` muestra mensaje |
+
+**Testing (Fase 5b):**
+
+- `createSocketServer`: conexión con cookie de sesión válida (JWT real firmado con `signSessionToken`) + guildId en `adminGuildIds` → funciona igual que Fase 2; sin cookie → conexión rechazada; guildId fuera de `adminGuildIds` → `error` emitido, sin `queue:state`. `socket.io-client` en Node puede mandar `extraHeaders: { Cookie: ... }` al conectar, sirve para testear el middleware sin necesitar browser real.
+- `useGuildQueue`: `io()` mockeado (fake socket con `on`/`emit`/`disconnect` como `vi.fn()`) — simula `queue:state` y verifica que el estado del hook se actualiza; simula `connect_error`/`error` y verifica estado de error.
+- `GuildDetailPage`: mockea el hook, renderiza con snapshot fake, verifica que se muestra track/status/cola/volumen.
+
 ## Error handling
 
 | Fuente | Manejo |
@@ -458,7 +503,7 @@ Implementación incremental — cada fase se dispara explícitamente por el usua
 | 3b | `queueService` real (join voz, play/skip/pause/volumen) + rutas REST de queue (detalle: ver sección "Fase 3b — QueueService") |
 | 4 | Slash commands: `/play`, `/skip`, `/pause`, `/resume`, `/queue`, `/volume`, `/remove`, `/shuffle`, `/stop` usando `queueService` (detalle: ver sección "Fase 4 — Slash Commands") |
 | 5a | Frontend scaffolding + auth: Vite+React, login, lista de guilds (detalle: ver sección "Fase 5a — Frontend Scaffolding + Auth") |
-| 5b | Sincronización en tiempo real: socket.io-client, useGuildQueue, UI de estado en vivo |
+| 5b | Sincronización en tiempo real: socket.io-client, useGuildQueue, UI de estado en vivo, + auth en el handshake del socket (detalle: ver sección "Fase 5b — Sincronización en tiempo real") |
 | 5c | Controles de reproducción: play/skip/pause/volumen/etc conectados a REST |
 | 6 | Deploy free-tier: Render/Railway (backend+bot), Vercel/Netlify (frontend), consideraciones de sleep/wake-up en free tier |
 
@@ -466,4 +511,4 @@ Implementación incremental — cada fase se dispara explícitamente por el usua
 
 - Free-tier hosts (Render/Railway free) duermen tras inactividad — reconexión de voz tras cold-start necesita manejo explícito (a resolver en Fase 6).
 - Límites de rate-limit de Spotify/SoundCloud vía discord-player extractors no confirmados en producción — validar en Fase 1-2 con uso real.
-- CORS: hallazgo del review final de Fase 3a, resuelto en Fase 5a (ver esa sección) para las rutas Express (`cors({ origin: FRONTEND_URL, credentials: true })`). Pendiente todavía: socket.io también necesita su propia config de CORS — se resuelve en Fase 5b cuando el frontend realmente abra la conexión de socket desde otro origin.
+- CORS: hallazgo del review final de Fase 3a. Rutas Express resueltas en Fase 5a; socket.io resuelto en Fase 5b (junto con el auth del handshake, ver esa sección).
