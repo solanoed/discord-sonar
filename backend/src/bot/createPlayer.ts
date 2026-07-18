@@ -3,7 +3,7 @@ import { Player } from 'discord-player';
 import { SoundCloudExtractor } from '@discord-player/extractor';
 
 export async function createPlayer(client: Client): Promise<Player> {
-  const player = new Player(client);
+  const player = new Player(client, { skipFFmpeg: false });
   await player.extractors.register(SoundCloudExtractor, {});
   return player;
 }
