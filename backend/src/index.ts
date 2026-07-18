@@ -37,7 +37,7 @@ async function main(): Promise<void> {
     player,
   );
   const httpServer = createHttpServer(app);
-  const io = createSocketServer(httpServer, player);
+  const io = createSocketServer(httpServer, player, env.JWT_SECRET, env.FRONTEND_URL);
   registerPlayerEventBridge(player, io);
 
   httpServer.listen(env.PORT, () => {
