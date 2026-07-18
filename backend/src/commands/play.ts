@@ -5,13 +5,20 @@ import { Command, CommandDeps } from './types';
 const data = new SlashCommandBuilder()
   .setName('play')
   .setDescription('Play a track in your current voice channel')
-  .addStringOption((option) => option.setName('query').setDescription('Song name or URL').setRequired(true));
+  .addStringOption((option) => option.setName('query').setDescription('Song name or URL').setRequired(true))
+  .addStringOption((option) =>
+    option
+      .setName('source')
+      .setDescription('Where to search (defaults to YouTube)')
+      .addChoices({ name: 'YouTube', value: 'youtube' }, { name: 'SoundCloud', value: 'soundcloud' }),
+  );
 
 async function execute(interaction: ChatInputCommandInteraction, deps: CommandDeps): Promise<void> {
   await interaction.deferReply();
 
   const guildId = interaction.guildId;
   const query = interaction.options.getString('query', true);
+  const source = interaction.options.getString('source') as 'youtube' | 'soundcloud' | null;
 
   if (!guildId) {
     await interaction.editReply('This command only works in a server.');
@@ -19,7 +26,7 @@ async function execute(interaction: ChatInputCommandInteraction, deps: CommandDe
   }
 
   try {
-    await queueService.addTrack(deps.client, deps.player, guildId, interaction.user.id, query);
+    await queueService.addTrack(deps.client, deps.player, guildId, interaction.user.id, query, source ?? undefined);
     await interaction.editReply(`Added **${query}** to the queue.`);
   } catch (error) {
     if (error instanceof queueService.NotInVoiceChannelError) {

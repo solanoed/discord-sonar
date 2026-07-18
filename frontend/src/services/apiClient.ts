@@ -63,12 +63,14 @@ async function throwIfNotOk(response: Response, fallbackMessage: string): Promis
   throw new Error(message);
 }
 
-export async function addTrack(guildId: string, query: string): Promise<void> {
+export type TrackSource = 'youtube' | 'soundcloud';
+
+export async function addTrack(guildId: string, query: string, source?: TrackSource): Promise<void> {
   const response = await fetch(`${BACKEND_URL}/api/guilds/${guildId}/queue`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query }),
+    body: JSON.stringify({ query, source }),
   });
   await throwIfNotOk(response, 'Failed to add track');
 }

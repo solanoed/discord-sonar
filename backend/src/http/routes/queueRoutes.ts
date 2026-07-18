@@ -25,7 +25,7 @@ export function createQueueRoutes(config: QueueRoutesConfig): Router {
   });
 
   router.post('/', async (req: Request, res: Response) => {
-    const { query } = req.body as { query?: string };
+    const { query, source } = req.body as { query?: string; source?: string };
     const user = (req as AuthenticatedRequest).user!;
 
     if (typeof query !== 'string' || query.length === 0) {
@@ -33,8 +33,13 @@ export function createQueueRoutes(config: QueueRoutesConfig): Router {
       return;
     }
 
+    if (source !== undefined && source !== 'youtube' && source !== 'soundcloud') {
+      res.status(400).json({ message: 'source must be "youtube" or "soundcloud"' });
+      return;
+    }
+
     try {
-      await queueService.addTrack(config.client, config.player, req.params.guildId, user.userId, query);
+      await queueService.addTrack(config.client, config.player, req.params.guildId, user.userId, query, source);
       res.status(200).json(buildQueueSnapshot(config.player.nodes.get(req.params.guildId)));
     } catch (error) {
       if (error instanceof queueService.NotInVoiceChannelError) {

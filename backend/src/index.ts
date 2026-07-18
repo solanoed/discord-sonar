@@ -13,7 +13,7 @@ import { startKeepAlive } from './keepAlive';
 async function main(): Promise<void> {
   const env = loadEnv();
   const client = createDiscordClient();
-  const player = await createPlayer(client);
+  const player = await createPlayer(client, { youtubeCookie: env.YOUTUBE_COOKIE });
 
   client.once('ready', (readyClient) => {
     console.log(`Logged in as ${readyClient.user.tag}`);

@@ -125,6 +125,28 @@ describe('addTrack', () => {
 
     expect(queue.addTrack).toHaveBeenCalledWith(fakePlaylist);
   });
+
+  it('defaults to searching YouTube when no source is given', async () => {
+    const { client, player } = buildFakes({});
+
+    await addTrack(client, player, 'guild-1', 'user-1', 'song query');
+
+    expect(player.search).toHaveBeenCalledWith('song query', {
+      requestedBy: 'user-1',
+      searchEngine: 'youtubeSearch',
+    });
+  });
+
+  it('searches SoundCloud when source is "soundcloud"', async () => {
+    const { client, player } = buildFakes({});
+
+    await addTrack(client, player, 'guild-1', 'user-1', 'song query', 'soundcloud');
+
+    expect(player.search).toHaveBeenCalledWith('song query', {
+      requestedBy: 'user-1',
+      searchEngine: 'soundcloudSearch',
+    });
+  });
 });
 
 function fakeQueueForControls(overrides: Partial<{

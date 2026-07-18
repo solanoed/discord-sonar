@@ -2,11 +2,13 @@ import { useParams } from 'react-router-dom';
 import { FormEvent, useState } from 'react';
 import * as useGuildQueueModule from '../hooks/useGuildQueue';
 import * as apiClient from '../services/apiClient';
+import type { TrackSource } from '../services/apiClient';
 
 export function GuildDetailPage() {
   const { guildId } = useParams<{ guildId: string }>();
   const { snapshot, loading, error } = useGuildQueueModule.useGuildQueue(guildId ?? '');
   const [query, setQuery] = useState('');
+  const [source, setSource] = useState<TrackSource>('youtube');
   const [volumeInput, setVolumeInput] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -26,7 +28,7 @@ export function GuildDetailPage() {
     }
     const submittedQuery = query;
     setQuery('');
-    void runAction(() => apiClient.addTrack(guildId, submittedQuery));
+    void runAction(() => apiClient.addTrack(guildId, submittedQuery, source));
   }
 
   function handleVolumeSubmit(event: FormEvent<HTMLFormElement>): void {
@@ -56,6 +58,10 @@ export function GuildDetailPage() {
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Song name or URL"
         />
+        <select value={source} onChange={(event) => setSource(event.target.value as TrackSource)}>
+          <option value="youtube">YouTube</option>
+          <option value="soundcloud">SoundCloud</option>
+        </select>
         <button type="submit" disabled={query.trim().length === 0}>
           Play
         </button>

@@ -106,4 +106,23 @@ describe('loadEnv', () => {
     });
     expect(withIt.TEST_GUILD_ID).toBe('guild-123');
   });
+
+  it('leaves YOUTUBE_COOKIE undefined when absent, and passes it through when present', () => {
+    const withoutIt = loadEnv({
+      DISCORD_TOKEN: 'token',
+      DISCORD_CLIENT_ID: 'abc',
+      DISCORD_CLIENT_SECRET: 'clientsecret',
+      JWT_SECRET: 'secret',
+    });
+    expect(withoutIt.YOUTUBE_COOKIE).toBeUndefined();
+
+    const withIt = loadEnv({
+      DISCORD_TOKEN: 'token',
+      DISCORD_CLIENT_ID: 'abc',
+      DISCORD_CLIENT_SECRET: 'clientsecret',
+      JWT_SECRET: 'secret',
+      YOUTUBE_COOKIE: 'session=abc123',
+    });
+    expect(withIt.YOUTUBE_COOKIE).toBe('session=abc123');
+  });
 });

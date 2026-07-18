@@ -4,11 +4,13 @@ import type { Player } from 'discord-player';
 import * as queueService from '../services/queueService';
 import { playCommand } from './play';
 
-function fakeInteraction(query: string, guildId: string | null = 'guild-1') {
+function fakeInteraction(query: string, guildId: string | null = 'guild-1', source: string | null = null) {
   return {
     guildId,
     user: { id: 'user-1' },
-    options: { getString: vi.fn(() => query) },
+    options: {
+      getString: vi.fn((name: string) => (name === 'query' ? query : source)),
+    },
     deferReply: vi.fn(async () => undefined),
     editReply: vi.fn(async () => undefined),
   } as unknown as ChatInputCommandInteraction;
@@ -32,8 +34,31 @@ describe('playCommand', () => {
     await playCommand.execute(interaction, deps);
 
     expect(interaction.deferReply).toHaveBeenCalledTimes(1);
-    expect(queueService.addTrack).toHaveBeenCalledWith(deps.client, deps.player, 'guild-1', 'user-1', 'never gonna give you up');
+    expect(queueService.addTrack).toHaveBeenCalledWith(
+      deps.client,
+      deps.player,
+      'guild-1',
+      'user-1',
+      'never gonna give you up',
+      undefined,
+    );
     expect(interaction.editReply).toHaveBeenCalledWith(expect.stringContaining('never gonna give you up'));
+  });
+
+  it('passes the requested source through to addTrack', async () => {
+    vi.spyOn(queueService, 'addTrack').mockResolvedValue(undefined);
+    const interaction = fakeInteraction('a song', 'guild-1', 'soundcloud');
+
+    await playCommand.execute(interaction, deps);
+
+    expect(queueService.addTrack).toHaveBeenCalledWith(
+      deps.client,
+      deps.player,
+      'guild-1',
+      'user-1',
+      'a song',
+      'soundcloud',
+    );
   });
 
   it('replies with a friendly message when the user is not in a voice channel', async () => {

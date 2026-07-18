@@ -68,7 +68,46 @@ describe('POST /api/guilds/:guildId/queue', () => {
       .send({ query: 'never gonna give you up' });
 
     expect(response.status).toBe(200);
-    expect(queueService.addTrack).toHaveBeenCalledWith(expect.anything(), player, 'guild-1', 'user-1', 'never gonna give you up');
+    expect(queueService.addTrack).toHaveBeenCalledWith(
+      expect.anything(),
+      player,
+      'guild-1',
+      'user-1',
+      'never gonna give you up',
+      undefined,
+    );
+  });
+
+  it('passes the requested source through to addTrack', async () => {
+    vi.spyOn(queueService, 'addTrack').mockResolvedValue(undefined);
+    const player = { nodes: { get: vi.fn(() => null) } } as unknown as Player;
+    const app = buildTestApp(player);
+
+    await request(app)
+      .post('/api/guilds/guild-1/queue')
+      .set('Cookie', [`session=${tokenFor(['guild-1'])}`])
+      .send({ query: 'a song', source: 'soundcloud' });
+
+    expect(queueService.addTrack).toHaveBeenCalledWith(
+      expect.anything(),
+      player,
+      'guild-1',
+      'user-1',
+      'a song',
+      'soundcloud',
+    );
+  });
+
+  it('rejects with 400 when source is not "youtube" or "soundcloud"', async () => {
+    const player = { nodes: { get: vi.fn(() => null) } } as unknown as Player;
+    const app = buildTestApp(player);
+
+    const response = await request(app)
+      .post('/api/guilds/guild-1/queue')
+      .set('Cookie', [`session=${tokenFor(['guild-1'])}`])
+      .send({ query: 'a song', source: 'spotify' });
+
+    expect(response.status).toBe(400);
   });
 
   it('rejects with 400 when the query is missing', async () => {

@@ -95,6 +95,13 @@ describe('addTrack', () => {
     vi.spyOn(global, 'fetch').mockResolvedValue(jsonResponse(400, { message: 'query is required' }));
     await expect(addTrack('guild-1', '')).rejects.toThrow('query is required');
   });
+
+  it('includes the source in the request body when given', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(jsonResponse(200, {}));
+    await addTrack('guild-1', 'a song', 'soundcloud');
+    const [, init] = fetchSpy.mock.calls[0];
+    expect(JSON.parse(init?.body as string)).toEqual({ query: 'a song', source: 'soundcloud' });
+  });
 });
 
 describe('skip', () => {

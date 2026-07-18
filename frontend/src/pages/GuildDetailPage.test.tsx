@@ -100,7 +100,7 @@ describe('GuildDetailPage', () => {
 });
 
 describe('GuildDetailPage playback controls', () => {
-  it('submits the play form and calls addTrack with the guild id and query', async () => {
+  it('submits the play form and calls addTrack with the guild id, query, and default source', async () => {
     mockQueue(null);
     vi.spyOn(apiClient, 'addTrack').mockResolvedValue(undefined);
     const user = userEvent.setup();
@@ -109,7 +109,20 @@ describe('GuildDetailPage playback controls', () => {
     await user.type(screen.getByPlaceholderText('Song name or URL'), 'never gonna give you up');
     await user.click(screen.getByRole('button', { name: 'Play' }));
 
-    expect(apiClient.addTrack).toHaveBeenCalledWith('guild-1', 'never gonna give you up');
+    expect(apiClient.addTrack).toHaveBeenCalledWith('guild-1', 'never gonna give you up', 'youtube');
+  });
+
+  it('submits the play form with soundcloud when that source is selected', async () => {
+    mockQueue(null);
+    vi.spyOn(apiClient, 'addTrack').mockResolvedValue(undefined);
+    const user = userEvent.setup();
+
+    renderPage();
+    await user.type(screen.getByPlaceholderText('Song name or URL'), 'a song');
+    await user.selectOptions(screen.getByRole('combobox'), 'soundcloud');
+    await user.click(screen.getByRole('button', { name: 'Play' }));
+
+    expect(apiClient.addTrack).toHaveBeenCalledWith('guild-1', 'a song', 'soundcloud');
   });
 
   it('disables the play button when the input is empty', () => {

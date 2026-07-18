@@ -19,12 +19,20 @@ export class VoiceConnectionError extends Error {
   }
 }
 
+export type TrackSource = 'youtube' | 'soundcloud';
+
+const SEARCH_ENGINE_BY_SOURCE: Record<TrackSource, 'youtubeSearch' | 'soundcloudSearch'> = {
+  youtube: 'youtubeSearch',
+  soundcloud: 'soundcloudSearch',
+};
+
 export async function addTrack(
   client: Client,
   player: Player,
   guildId: string,
   userId: string,
   query: string,
+  source: TrackSource = 'youtube',
 ): Promise<void> {
   const guild = await client.guilds.fetch(guildId);
   const member = await guild.members.fetch(userId);
@@ -39,7 +47,10 @@ export async function addTrack(
     throw new NotInVoiceChannelError();
   }
 
-  const searchResult = await player.search(query, { requestedBy: userId });
+  const searchResult = await player.search(query, {
+    requestedBy: userId,
+    searchEngine: SEARCH_ENGINE_BY_SOURCE[source],
+  });
   if (searchResult.isEmpty()) {
     throw new NoSearchResultsError(query);
   }
