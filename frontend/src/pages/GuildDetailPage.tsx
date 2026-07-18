@@ -32,7 +32,7 @@ export function GuildDetailPage() {
   function handleVolumeSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     const amount = Number(volumeInput);
-    if (!guildId || !Number.isFinite(amount) || amount < 0 || amount > 100) {
+    if (!guildId || volumeInput.trim().length === 0 || !Number.isFinite(amount) || amount < 0 || amount > 100) {
       return;
     }
     void runAction(() => apiClient.setVolume(guildId, amount));

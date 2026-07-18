@@ -205,6 +205,17 @@ describe('GuildDetailPage playback controls', () => {
     expect(apiClient.setVolume).not.toHaveBeenCalled();
   });
 
+  it('does not call setVolume when the volume input is empty', async () => {
+    mockQueue(playingSnapshot());
+    vi.spyOn(apiClient, 'setVolume').mockResolvedValue(undefined);
+    const user = userEvent.setup();
+
+    renderPage();
+    await user.click(screen.getByRole('button', { name: 'Set volume' }));
+
+    expect(apiClient.setVolume).not.toHaveBeenCalled();
+  });
+
   it('calls remove with the guild id and track id when a remove button is clicked', async () => {
     mockQueue(playingSnapshot());
     vi.spyOn(apiClient, 'remove').mockResolvedValue(undefined);
