@@ -26,6 +26,13 @@ function buildTestApp() {
   return app;
 }
 
+function buildTestAppWithConfig(overrides: Partial<AuthRoutesConfig>) {
+  const app = express();
+  app.use(cookieParser());
+  app.use('/api/auth', createAuthRoutes({ ...config, ...overrides }));
+  return app;
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -147,5 +154,53 @@ describe('GET /api/auth/me', () => {
     const response = await request(app).get('/api/auth/me');
 
     expect(response.status).toBe(401);
+  });
+});
+
+describe('cookie flags in production', () => {
+  it('sets sameSite=none and secure=true on the oauth_state cookie', async () => {
+    const app = buildTestAppWithConfig({ isProduction: true });
+
+    const response = await request(app).get('/api/auth/login');
+
+    const cookie = response.headers['set-cookie']?.[0] ?? '';
+    expect(cookie).toContain('oauth_state=');
+    expect(cookie).toContain('SameSite=None');
+    expect(cookie).toContain('Secure');
+  });
+
+  it('sets sameSite=none and secure=true on the session cookie after callback', async () => {
+    vi.spyOn(discordOAuth, 'exchangeCodeForToken').mockResolvedValue({
+      accessToken: 'access-1',
+      refreshToken: 'refresh-1',
+      expiresIn: 604800,
+    });
+    vi.spyOn(discordOAuth, 'fetchDiscordUser').mockResolvedValue({ id: 'user-1', username: 'tester' });
+    vi.spyOn(discordOAuth, 'fetchUserGuilds').mockResolvedValue([
+      { id: 'guild-1', name: 'G', owner: true, permissions: '0' },
+    ]);
+
+    const app = buildTestAppWithConfig({ isProduction: true });
+
+    const response = await request(app)
+      .get('/api/auth/callback?code=abc&state=matching-state')
+      .set('Cookie', ['oauth_state=matching-state']);
+
+    const sessionCookie = (response.headers['set-cookie'] as unknown as string[])?.find((c) =>
+      c.startsWith('session='),
+    );
+    expect(sessionCookie).toBeDefined();
+    expect(sessionCookie).toContain('SameSite=None');
+    expect(sessionCookie).toContain('Secure');
+  });
+
+  it('still uses sameSite=lax and no secure flag when isProduction is false', async () => {
+    const app = buildTestApp();
+
+    const response = await request(app).get('/api/auth/login');
+
+    const cookie = response.headers['set-cookie']?.[0] ?? '';
+    expect(cookie).toContain('SameSite=Lax');
+    expect(cookie).not.toContain('Secure');
   });
 });

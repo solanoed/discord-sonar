@@ -26,7 +26,8 @@ export function createAuthRoutes(config: AuthRoutesConfig): Router {
     const state = crypto.randomBytes(16).toString('hex');
     res.cookie('oauth_state', state, {
       httpOnly: true,
-      sameSite: 'lax',
+      sameSite: config.isProduction ? 'none' : 'lax',
+      secure: config.isProduction,
       maxAge: OAUTH_STATE_COOKIE_MAX_AGE_MS,
     });
     res.redirect(discordOAuth.buildAuthorizeUrl(config.oauth, state));
@@ -62,7 +63,7 @@ export function createAuthRoutes(config: AuthRoutesConfig): Router {
       const sessionToken = signSessionToken({ userId: user.id, adminGuildIds }, config.jwtSecret);
       res.cookie('session', sessionToken, {
         httpOnly: true,
-        sameSite: 'lax',
+        sameSite: config.isProduction ? 'none' : 'lax',
         secure: config.isProduction,
         maxAge: SESSION_COOKIE_MAX_AGE_MS,
       });
@@ -110,7 +111,7 @@ export function createAuthRoutes(config: AuthRoutesConfig): Router {
       );
       res.cookie('session', sessionToken, {
         httpOnly: true,
-        sameSite: 'lax',
+        sameSite: config.isProduction ? 'none' : 'lax',
         secure: config.isProduction,
         maxAge: SESSION_COOKIE_MAX_AGE_MS,
       });
