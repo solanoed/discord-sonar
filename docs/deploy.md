@@ -27,7 +27,7 @@ git push -u origin master
 ## 3. Deploy the frontend on Vercel
 
 1. Vercel dashboard → **Add New** → **Project** → import the same repo.
-2. **Important:** when Vercel asks for a Root Directory, leave it at the repo root (the default). Do **not** set it to `frontend/` — `vercel.json`'s `outputDirectory` is written relative to the repo root and depends on this.
+2. Set **Root Directory** to `frontend`. Vercel then auto-detects the Vite framework and uses the correct install/build/output settings on its own (`pnpm install`, `tsc -b && vite build`, output `dist`) — no `vercel.json` needed.
 3. Add environment variable `VITE_BACKEND_URL` = the Render URL from step 2.3 (e.g. `https://discord-music-backend.onrender.com`).
 4. Deploy. Note the assigned URL, e.g. `https://your-app.vercel.app`.
 

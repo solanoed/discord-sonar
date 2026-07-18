@@ -528,10 +528,17 @@ render.yaml (nuevo, raíz del repo)
   → start: pnpm run start
   → env vars: NODE_ENV=production + secrets con sync:false (cargados a mano en el dashboard)
 
-vercel.json (nuevo, raíz del repo)
-  → installCommand: pnpm install --frozen-lockfile
-  → buildCommand: pnpm --filter frontend build
-  → outputDirectory: frontend/dist
+Vercel (sin vercel.json — Root Directory = frontend en el dashboard)
+  → **Corrección post-implementación:** el diseño original proponía un
+    `vercel.json` en la raíz del repo con Root Directory del proyecto
+    apuntando a la raíz. En el deploy real esto falló (`No Output Directory
+    named "dist" found`) porque, con Root Directory=raíz, Vercel efectivamente
+    no localizaba el output en el lugar esperado por su propia configuración
+    de dashboard. La solución real: Root Directory = `frontend` en el
+    dashboard de Vercel, sin `vercel.json` — Vercel autodetecta Vite dentro
+    de esa carpeta y usa install/build/output correctos por su cuenta
+    (`pnpm install`, `tsc -b && vite build`, output `dist`). El archivo
+    `vercel.json` de la raíz fue eliminado del repo.
 
 backend/src/http/routes/authRoutes.ts (modificado)
   → las 3 cookies (oauth_state + 2x session) pasan de sameSite fijo 'lax' a:
@@ -563,7 +570,7 @@ docs/deploy.md (nuevo, documentación operativa — no código)
 - `authRoutes.test.ts`: agregar caso `isProduction: true` (ya existe el fixture con `false`) → assert `sameSite: 'none'` y `secure: true` en las 3 cookies.
 - `keepAlive.test.ts` (nuevo): `vi.useFakeTimers()` + spy en `global.fetch`, avanzar 10min, assert fetch llamado con `${url}/health`.
 - `deployCommands.ts`: sin test — ya es un script CLI sin cobertura hoy, no se rompe el patrón existente agregándole una rama.
-- `render.yaml` / `vercel.json`: sin test automatizado; se validan con el deploy real (checklist manual en `docs/deploy.md`).
+- `render.yaml`: sin test automatizado; se valida con el deploy real (checklist manual en `docs/deploy.md`). Vercel no usa archivo de config (ver corrección arriba).
 
 **Guía manual (`docs/deploy.md`), resumen:**
 
@@ -571,7 +578,7 @@ docs/deploy.md (nuevo, documentación operativa — no código)
 |---|---|
 | 1 | Push del repo a un remote de GitHub (acción del usuario) |
 | 2 | Render: New Web Service, conectar repo, detecta `render.yaml`, cargar secrets a mano, deploy, anotar URL `*.onrender.com` |
-| 3 | Vercel: New Project, mismo repo, detecta `vercel.json`, `VITE_BACKEND_URL` = URL de Render, deploy, anotar URL `*.vercel.app` |
+| 3 | Vercel: New Project, mismo repo, Root Directory = `frontend`, `VITE_BACKEND_URL` = URL de Render, deploy, anotar URL `*.vercel.app` |
 | 4 | Volver a Render: `FRONTEND_URL` = URL de Vercel, redeploy (dependencia circular se resuelve en la segunda vuelta) |
 | 5 | Discord Developer Portal: redirect URI = `https://<render-url>/api/auth/callback` |
 | 6 | Correr `deploy-commands` con env vars de prod (sin `TEST_GUILD_ID`) → registro global |
