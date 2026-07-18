@@ -513,6 +513,70 @@ frontend/src/pages/GuildDetailPage.tsx (extendido)
 - `apiClient`: las 8 funciones nuevas, `fetch` mockeado — URL/método/body/credentials correctos, tira en respuesta no-ok.
 - `GuildDetailPage`: `apiClient` mockeado (namespace import) + `useGuildQueue` ya mockeado — cada botón dispara la función correcta con los args correctos; error se muestra si la llamada rechaza; controles ocultos si no hay `currentTrack`; toggle pause/resume muestra label correcto según `status`.
 
+## Fase 6 — Deploy free-tier (detalle confirmado)
+
+Última fase: deploy real de backend+bot y frontend en hosting gratuito, con los ajustes de producción que eso exige (cookies cross-site, comandos globales, keepalive del bot). Sin CI/CD automático — se documenta un flujo de deploy manual, dado que el repo todavía no tiene remote.
+
+**Stack:** Render (backend+bot, web service único) + Vercel (frontend estático).
+
+**Archivos:**
+
+```
+render.yaml (nuevo, raíz del repo)
+  → web service, rootDir: backend, healthCheckPath: /health
+  → build: corepack enable && pnpm install --frozen-lockfile && pnpm run build
+  → start: pnpm run start
+  → env vars: NODE_ENV=production + secrets con sync:false (cargados a mano en el dashboard)
+
+vercel.json (nuevo, raíz del repo)
+  → installCommand: pnpm install --frozen-lockfile
+  → buildCommand: pnpm --filter frontend build
+  → outputDirectory: frontend/dist
+
+backend/src/http/routes/authRoutes.ts (modificado)
+  → las 3 cookies (oauth_state + 2x session) pasan de sameSite fijo 'lax' a:
+      sameSite: config.isProduction ? 'none' : 'lax'
+      secure: config.isProduction
+    (config.isProduction ya existe en AuthRoutesConfig; solo faltaba usarlo
+    consistentemente — la cookie oauth_state hoy ni siquiera setea `secure`)
+
+backend/src/keepAlive.ts (nuevo)
+  → startKeepAlive(selfUrl): setInterval cada 10min haciendo fetch a `${selfUrl}/health`
+  → evita que Render duerma el web service por inactividad HTTP
+
+backend/src/index.ts (modificado)
+  → llama startKeepAlive(env.BACKEND_BASE_URL) solo si env.NODE_ENV === 'production'
+
+backend/src/deployCommands.ts (modificado)
+  → si TEST_GUILD_ID está seteado: registro por guild (dev, instantáneo, comportamiento actual sin cambios)
+  → si no: registro global vía Routes.applicationCommands (prod, propaga ~1hr) — se quita el throw que hoy exige TEST_GUILD_ID siempre
+
+docs/deploy.md (nuevo, documentación operativa — no código)
+  → guía manual paso a paso: push a GitHub, Render, Vercel, resolución del
+    ciclo FRONTEND_URL↔BACKEND_BASE_URL, redirect URI en Discord Developer
+    Portal, deploy-commands en modo global, smoke test
+```
+
+**Por qué self-ping y no un cron externo:** el proceso ya corre 24/7 mientras está despierto (necesita conexión persistente al gateway de Discord); pinguearse a sí mismo cada 10min evita agregar una dependencia externa nueva (cuenta en otro servicio) para un problema que el propio proceso puede resolver solo. Si igual llega a dormirse, el próximo request real lo despierta — la reconexión de sockets (Fase 5b) ya cubre ese cold-start del lado del dashboard.
+
+**Testing (Fase 6):**
+- `authRoutes.test.ts`: agregar caso `isProduction: true` (ya existe el fixture con `false`) → assert `sameSite: 'none'` y `secure: true` en las 3 cookies.
+- `keepAlive.test.ts` (nuevo): `vi.useFakeTimers()` + spy en `global.fetch`, avanzar 10min, assert fetch llamado con `${url}/health`.
+- `deployCommands.ts`: sin test — ya es un script CLI sin cobertura hoy, no se rompe el patrón existente agregándole una rama.
+- `render.yaml` / `vercel.json`: sin test automatizado; se validan con el deploy real (checklist manual en `docs/deploy.md`).
+
+**Guía manual (`docs/deploy.md`), resumen:**
+
+| Paso | Acción |
+|---|---|
+| 1 | Push del repo a un remote de GitHub (acción del usuario) |
+| 2 | Render: New Web Service, conectar repo, detecta `render.yaml`, cargar secrets a mano, deploy, anotar URL `*.onrender.com` |
+| 3 | Vercel: New Project, mismo repo, detecta `vercel.json`, `VITE_BACKEND_URL` = URL de Render, deploy, anotar URL `*.vercel.app` |
+| 4 | Volver a Render: `FRONTEND_URL` = URL de Vercel, redeploy (dependencia circular se resuelve en la segunda vuelta) |
+| 5 | Discord Developer Portal: redirect URI = `https://<render-url>/api/auth/callback` |
+| 6 | Correr `deploy-commands` con env vars de prod (sin `TEST_GUILD_ID`) → registro global |
+| 7 | Smoke test: login, unirse a voz, `/play` desde Discord y desde el dashboard |
+
 ## Error handling
 
 | Fuente | Manejo |
@@ -544,10 +608,10 @@ Implementación incremental — cada fase se dispara explícitamente por el usua
 | 5a | Frontend scaffolding + auth: Vite+React, login, lista de guilds (detalle: ver sección "Fase 5a — Frontend Scaffolding + Auth") |
 | 5b | Sincronización en tiempo real: socket.io-client, useGuildQueue, UI de estado en vivo, + auth en el handshake del socket (detalle: ver sección "Fase 5b — Sincronización en tiempo real") |
 | 5c | Controles de reproducción: play/skip/pause/volumen/etc conectados a REST (detalle: ver sección "Fase 5c — Controles de reproducción") |
-| 6 | Deploy free-tier: Render/Railway (backend+bot), Vercel/Netlify (frontend), consideraciones de sleep/wake-up en free tier |
+| 6 | Deploy free-tier: Render (backend+bot) + Vercel (frontend), cookie cross-site, self-ping keepalive, comandos globales (detalle: ver sección "Fase 6 — Deploy free-tier") |
 
 ## Open questions / risks
 
-- Free-tier hosts (Render/Railway free) duermen tras inactividad — reconexión de voz tras cold-start necesita manejo explícito (a resolver en Fase 6).
+- Free-tier hosts (Render free) duermen tras inactividad — resuelto en Fase 6 con self-ping cada 10min; si igual llega a dormirse, la reconexión de sockets de Fase 5b cubre el cold-start del lado del dashboard.
 - Límites de rate-limit de Spotify/SoundCloud vía discord-player extractors no confirmados en producción — validar en Fase 1-2 con uso real.
 - CORS: hallazgo del review final de Fase 3a. Rutas Express resueltas en Fase 5a; socket.io resuelto en Fase 5b (junto con el auth del handshake, ver esa sección).
