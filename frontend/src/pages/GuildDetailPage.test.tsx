@@ -1,11 +1,10 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import * as useGuildQueueModule from '../hooks/useGuildQueue';
 import { GuildDetailPage } from './GuildDetailPage';
 
 afterEach(() => {
-  cleanup();
   vi.restoreAllMocks();
 });
 
