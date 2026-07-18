@@ -2,6 +2,7 @@
   "name": "discord-music-dashboard",
   "private": true,
   "version": "1.0.0",
+  "packageManager": "pnpm@10.17.0",
   "scripts": {
     "dev:backend": "pnpm --filter backend dev",
     "build:backend": "pnpm --filter backend build",

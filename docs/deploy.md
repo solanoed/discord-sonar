@@ -20,7 +20,7 @@ git push -u origin master
 ## 2. Deploy the backend on Render
 
 1. Render dashboard → **New** → **Blueprint** → connect your repo. Render detects `render.yaml` at the repo root automatically.
-2. You'll be prompted to fill in every variable marked `sync: false`: `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `JWT_SECRET` (any long random string), `FRONTEND_URL` (leave a placeholder like `https://placeholder.vercel.app` for now — you'll update it in step 4), `BACKEND_BASE_URL` (leave blank for now too — Render assigns the URL after first deploy, then you fill this in and redeploy).
+2. You'll be prompted to fill in every variable marked `sync: false`: `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `JWT_SECRET` (any long random string), `FRONTEND_URL` (leave a placeholder like `https://placeholder.vercel.app` for now — you'll update it in step 4), `BACKEND_BASE_URL` (leave a placeholder like `https://placeholder.onrender.com` for now — you'll update it in step 2.4).
 3. Deploy. Once live, note the assigned URL, e.g. `https://discord-music-backend.onrender.com`.
 4. Go back to the service's environment variables and set `BACKEND_BASE_URL` to that exact URL, then trigger a manual redeploy (this value is used to build the OAuth `redirect_uri` and the keepalive ping target).
 
